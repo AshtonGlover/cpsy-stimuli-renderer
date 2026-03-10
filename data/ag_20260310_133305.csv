@@ -1,0 +1,37 @@
+participant_id,trial_id,order_index,shape,diffuse_direction,diffuse_azimuth,shadow_direction,shadow_azimuth,elevation,response,response_label,timestamp
+ag,13,1,convex,upper-left,120.0,right,0.0,45.0,2,mostly convex,2026-03-10T13:34:07
+ag,6,2,convex,right,0.0,lower-right,300.0,45.0,2,mostly convex,2026-03-10T13:34:09
+ag,25,3,convex,lower-left,240.0,right,0.0,45.0,3,both,2026-03-10T13:34:10
+ag,17,4,convex,upper-left,120.0,lower-left,240.0,45.0,4,mostly concave,2026-03-10T13:34:11
+ag,8,5,convex,upper-right,60.0,upper-right,60.0,45.0,1,convex,2026-03-10T13:35:02
+ag,30,6,convex,lower-left,240.0,lower-right,300.0,45.0,2,mostly convex,2026-03-10T13:35:03
+ag,15,7,convex,upper-left,120.0,upper-left,120.0,45.0,3,both,2026-03-10T13:35:04
+ag,31,8,convex,lower-right,300.0,right,0.0,45.0,4,mostly concave,2026-03-10T13:35:06
+ag,32,9,convex,lower-right,300.0,upper-right,60.0,45.0,5,concave,2026-03-10T13:35:07
+ag,34,10,convex,lower-right,300.0,left,180.0,45.0,3,both,2026-03-10T13:35:08
+ag,14,11,convex,upper-left,120.0,upper-right,60.0,45.0,2,mostly convex,2026-03-10T13:35:09
+ag,27,12,convex,lower-left,240.0,upper-left,120.0,45.0,1,convex,2026-03-10T13:35:11
+ag,18,13,convex,upper-left,120.0,lower-right,300.0,45.0,4,mostly concave,2026-03-10T13:35:13
+ag,35,14,convex,lower-right,300.0,lower-left,240.0,45.0,5,concave,2026-03-10T13:35:14
+ag,21,15,convex,left,180.0,upper-left,120.0,45.0,3,both,2026-03-10T13:35:15
+ag,2,16,convex,right,0.0,upper-right,60.0,45.0,4,mostly concave,2026-03-10T13:35:16
+ag,7,17,convex,upper-right,60.0,right,0.0,45.0,2,mostly convex,2026-03-10T13:35:17
+ag,4,18,convex,right,0.0,left,180.0,45.0,1,convex,2026-03-10T13:35:58
+ag,3,19,convex,right,0.0,upper-left,120.0,45.0,3,both,2026-03-10T13:36:00
+ag,24,20,convex,left,180.0,lower-right,300.0,45.0,3,both,2026-03-10T13:36:01
+ag,9,21,convex,upper-right,60.0,upper-left,120.0,45.0,4,mostly concave,2026-03-10T13:36:02
+ag,29,22,convex,lower-left,240.0,lower-left,240.0,45.0,5,concave,2026-03-10T13:36:03
+ag,16,23,convex,upper-left,120.0,left,180.0,45.0,2,mostly convex,2026-03-10T13:36:05
+ag,19,24,convex,left,180.0,right,0.0,45.0,3,both,2026-03-10T13:36:06
+ag,33,25,convex,lower-right,300.0,upper-left,120.0,45.0,4,mostly concave,2026-03-10T13:36:07
+ag,1,26,convex,right,0.0,right,0.0,45.0,5,concave,2026-03-10T13:36:09
+ag,5,27,convex,right,0.0,lower-left,240.0,45.0,1,convex,2026-03-10T13:36:10
+ag,11,28,convex,upper-right,60.0,lower-left,240.0,45.0,3,both,2026-03-10T13:36:12
+ag,10,29,convex,upper-right,60.0,left,180.0,45.0,4,mostly concave,2026-03-10T13:36:13
+ag,22,30,convex,left,180.0,left,180.0,45.0,5,concave,2026-03-10T13:36:14
+ag,12,31,convex,upper-right,60.0,lower-right,300.0,45.0,3,both,2026-03-10T13:36:15
+ag,26,32,convex,lower-left,240.0,upper-right,60.0,45.0,2,mostly convex,2026-03-10T13:36:16
+ag,36,33,convex,lower-right,300.0,lower-right,300.0,45.0,1,convex,2026-03-10T13:36:17
+ag,23,34,convex,left,180.0,lower-left,240.0,45.0,3,both,2026-03-10T13:36:17
+ag,28,35,convex,lower-left,240.0,left,180.0,45.0,4,mostly concave,2026-03-10T13:36:18
+ag,20,36,convex,left,180.0,upper-right,60.0,45.0,5,concave,2026-03-10T13:36:19

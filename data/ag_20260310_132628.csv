@@ -1,0 +1,17 @@
+participant_id,trial_id,order_index,cue_strength,direction,shape,response,response_label,timestamp
+ag,6,1,weak,left,concave,4,mostly concave,2026-03-10T13:26:59
+ag,5,2,weak,left,convex,4,mostly concave,2026-03-10T13:27:01
+ag,12,3,strong,below,concave,1,convex,2026-03-10T13:27:06
+ag,4,4,weak,below,concave,3,both,2026-03-10T13:27:10
+ag,3,5,weak,below,convex,2,mostly convex,2026-03-10T13:27:11
+ag,8,6,weak,right,concave,4,mostly concave,2026-03-10T13:27:12
+ag,11,7,strong,below,convex,2,mostly convex,2026-03-10T13:27:13
+ag,9,8,strong,above,convex,3,both,2026-03-10T13:27:14
+ag,2,9,weak,above,concave,4,mostly concave,2026-03-10T13:27:15
+ag,15,10,strong,right,convex,2,mostly convex,2026-03-10T13:27:16
+ag,16,11,strong,right,concave,3,both,2026-03-10T13:27:17
+ag,14,12,strong,left,concave,4,mostly concave,2026-03-10T13:27:18
+ag,10,13,strong,above,concave,5,concave,2026-03-10T13:27:19
+ag,7,14,weak,right,convex,3,both,2026-03-10T13:27:21
+ag,1,15,weak,above,convex,2,mostly convex,2026-03-10T13:27:22
+ag,13,16,strong,left,convex,3,both,2026-03-10T13:27:23

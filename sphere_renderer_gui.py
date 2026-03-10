@@ -9,7 +9,6 @@ from tkinter import ttk
 def clamp01(value: float) -> float:
     return max(0.0, min(1.0, value))
 
-
 def vec_from_angles(azimuth_deg: float, elevation_deg: float):
     """Return a unit vector from azimuth/elevation in degrees."""
     az = math.radians(azimuth_deg)
@@ -22,7 +21,6 @@ def vec_from_angles(azimuth_deg: float, elevation_deg: float):
     if mag == 0:
         return (0.0, 0.0, 1.0)
     return (x / mag, y / mag, z / mag)
-
 
 class SphereRendererGUI:
     def __init__(self, root: tk.Tk):
@@ -247,7 +245,6 @@ class SphereRendererGUI:
             rows.append("{" + " ".join(row_colors) + "}")
 
         self.photo.put(" ".join(rows), to=(0, 0, w, h))
-
 
 def main():
     root = tk.Tk()
