@@ -1,5 +1,0 @@
-participant_id,trial_id,order_index,shape,diffuse_direction,diffuse_azimuth,shadow_direction,shadow_azimuth,elevation,response,response_label,timestamp
-ag,33,1,convex,lower-right,300.0,upper-left,120.0,45.0,3,both,2026-03-10T13:31:38
-ag,17,2,convex,upper-left,120.0,lower-left,240.0,45.0,4,mostly concave,2026-03-10T13:31:40
-ag,11,3,convex,upper-right,60.0,lower-left,240.0,45.0,3,both,2026-03-10T13:31:41
-ag,1,4,convex,right,0.0,right,0.0,45.0,2,mostly convex,2026-03-10T13:31:42
