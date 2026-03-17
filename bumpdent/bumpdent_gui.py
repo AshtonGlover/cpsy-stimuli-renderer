@@ -8,7 +8,7 @@ from tkinter import filedialog, ttk
 
 from PIL import ImageTk
 
-from render_stimuli import RenderParams, clamp, render_image
+from render_stimuli import RenderParams, clamp, render_image, render_side_profile
 
 
 class BumpDentGUI:
@@ -26,8 +26,8 @@ class BumpDentGUI:
         self.top_is_concave_var = tk.BooleanVar(value=False)
         self.center_x_var = tk.DoubleVar(value=0.0)
         self.center_y_var = tk.DoubleVar(value=0.0)
-        self.bump_strength_var = tk.DoubleVar(value=1.0)
-        self.dent_strength_var = tk.DoubleVar(value=1.0)
+        self.bump_strength_var = tk.DoubleVar(value=0.95)
+        self.dent_strength_var = tk.DoubleVar(value=1.25)
         self.light_x_var = tk.DoubleVar(value=0.0)
         self.light_y_var = tk.DoubleVar(value=0.75)
         self.light_z_var = tk.DoubleVar(value=1.1)
@@ -35,9 +35,10 @@ class BumpDentGUI:
         self.diffuse_var = tk.DoubleVar(value=0.82)
         self.specular_var = tk.DoubleVar(value=0.18)
         self.shininess_var = tk.DoubleVar(value=20.0)
-        self.cosine_falloff_var = tk.BooleanVar(value=True)
-        self.flat_profile_var = tk.BooleanVar(value=False)
-        self.shadow_enabled_var = tk.BooleanVar(value=False)
+        self.cosine_falloff_var = tk.BooleanVar(value=False)
+        self.flat_profile_var = tk.BooleanVar(value=True)
+        self.shadow_enabled_var = tk.BooleanVar(value=True)
+        self.shadow_follows_light_y_var = tk.BooleanVar(value=True)
         self.shadow_azimuth_var = tk.DoubleVar(value=220.0)
         self.shadow_elevation_var = tk.DoubleVar(value=30.0)
         self.shadow_strength_var = tk.DoubleVar(value=0.45)
@@ -45,7 +46,9 @@ class BumpDentGUI:
         self.shadow_distance_var = tk.DoubleVar(value=45.0)
 
         self.photo = None
+        self.side_profile_photo = None
         self.shadow_window = None
+        self.side_profile_window = None
         self._build_ui()
         self.render()
 
@@ -153,12 +156,21 @@ class BumpDentGUI:
             variable=self.shadow_enabled_var,
             command=self.render,
         ).grid(row=2, column=0, sticky="w")
+        ttk.Checkbutton(
+            options_frame,
+            text="Shadows follow Light Y",
+            variable=self.shadow_follows_light_y_var,
+            command=self.render,
+        ).grid(row=3, column=0, sticky="w")
 
         button_row = ttk.Frame(controls)
         button_row.grid(row=5, column=0, sticky="ew", pady=(8, 0))
         ttk.Button(button_row, text="Export PNG", command=self.export_png).grid(row=0, column=0, sticky="ew")
         ttk.Button(button_row, text="Shadow Controls", command=self.open_shadow_window).grid(
             row=1, column=0, sticky="ew", pady=(6, 0)
+        )
+        ttk.Button(button_row, text="Side Profile", command=self.open_side_profile_window).grid(
+            row=2, column=0, sticky="ew", pady=(6, 0)
         )
 
         tip = ttk.Label(
@@ -231,6 +243,9 @@ class BumpDentGUI:
         return frame
 
     def _params(self) -> RenderParams:
+        light_y = clamp(self.light_y_var.get(), -1.0, 1.0)
+        shadow_follows_light_y = self.shadow_follows_light_y_var.get()
+
         return RenderParams(
             width=self.width,
             height=self.height,
@@ -244,7 +259,7 @@ class BumpDentGUI:
             bump_strength=max(0.2, self.bump_strength_var.get()),
             dent_strength=max(0.2, self.dent_strength_var.get()),
             light_x=clamp(self.light_x_var.get(), -1.0, 1.0),
-            light_y=clamp(self.light_y_var.get(), -1.0, 1.0),
+            light_y=light_y,
             light_z=max(0.1, self.light_z_var.get()),
             ambient=max(0.0, self.ambient_var.get()),
             diffuse=max(0.0, self.diffuse_var.get()),
@@ -253,6 +268,8 @@ class BumpDentGUI:
             use_cosine_falloff=self.cosine_falloff_var.get(),
             use_flat_profile=self.flat_profile_var.get(),
             shadow_enabled=self.shadow_enabled_var.get(),
+            shadow_x=0.0 if shadow_follows_light_y else None,
+            shadow_y=light_y if shadow_follows_light_y else None,
             shadow_azimuth=self.shadow_azimuth_var.get() % 360.0,
             shadow_elevation=clamp(self.shadow_elevation_var.get(), 1.0, 89.0),
             shadow_strength=clamp(self.shadow_strength_var.get(), 0.0, 1.0),
@@ -317,7 +334,7 @@ class BumpDentGUI:
 
         ttk.Label(
             frame,
-            text="Shadow direction is independent from the shading light.",
+            text="Turn off 'Shadows follow Light Y' to edit shadow direction independently.",
             justify="left",
             wraplength=260,
         ).grid(row=2, column=0, sticky="w", pady=(6, 0))
@@ -329,10 +346,54 @@ class BumpDentGUI:
             self.shadow_window.destroy()
             self.shadow_window = None
 
+    def open_side_profile_window(self) -> None:
+        if self.side_profile_window is not None and self.side_profile_window.winfo_exists():
+            self.side_profile_window.lift()
+            self.side_profile_window.focus_force()
+            self._render_side_profile()
+            return
+
+        self.side_profile_window = tk.Toplevel(self.root)
+        self.side_profile_window.title("Side Profile")
+        self.side_profile_window.transient(self.root)
+        self.side_profile_window.columnconfigure(0, weight=1)
+        self.side_profile_window.rowconfigure(0, weight=1)
+
+        container = ttk.Frame(self.side_profile_window, padding=10)
+        container.grid(row=0, column=0, sticky="nsew")
+        container.columnconfigure(0, weight=1)
+        container.rowconfigure(0, weight=1)
+
+        self.side_profile_label = tk.Label(container, bd=0, highlightthickness=0, bg="#f4f6f8")
+        self.side_profile_label.grid(row=0, column=0, sticky="nsew")
+
+        ttk.Label(
+            container,
+            text="Cross-section preview from the side using the current bump/dent settings.",
+            justify="left",
+            wraplength=420,
+        ).grid(row=1, column=0, sticky="w", pady=(8, 0))
+
+        self.side_profile_window.protocol("WM_DELETE_WINDOW", self._close_side_profile_window)
+        self._render_side_profile()
+
+    def _render_side_profile(self) -> None:
+        if self.side_profile_window is None or not self.side_profile_window.winfo_exists():
+            return
+        image = render_side_profile(self._params())
+        self.side_profile_photo = ImageTk.PhotoImage(image)
+        self.side_profile_label.configure(image=self.side_profile_photo)
+
+    def _close_side_profile_window(self) -> None:
+        if self.side_profile_window is not None:
+            self.side_profile_window.destroy()
+            self.side_profile_window = None
+
     def render(self) -> None:
         image = render_image(self._params())
         self.photo = ImageTk.PhotoImage(image)
         self.canvas.itemconfigure(self.canvas_image, image=self.photo)
+        self._render_side_profile()
 
     def export_png(self) -> None:
         path = filedialog.asksaveasfilename(

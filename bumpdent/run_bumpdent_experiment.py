@@ -13,19 +13,21 @@ from tkinter import ttk
 
 from PIL import Image, ImageDraw, ImageTk
 
-from render_stimuli import RenderParams, render_image, vec_from_angles
+from render_stimuli import RenderParams, render_image
 
 
-def direction_label(azimuth_deg: float) -> str:
-    labels = {
-        0.0: "right",
-        60.0: "upper-right",
-        120.0: "upper-left",
-        180.0: "left",
-        240.0: "lower-left",
-        300.0: "lower-right",
-    }
-    return labels[azimuth_deg % 360.0]
+def direction_label(light_y: float) -> str:
+    if light_y <= -0.8:
+        return "bottom"
+    if light_y <= -0.4:
+        return "lower"
+    if light_y < 0.0:
+        return "slightly lower"
+    if light_y < 0.4:
+        return "slightly upper"
+    if light_y < 0.8:
+        return "upper"
+    return "top"
 
 
 @dataclass(frozen=True)
@@ -33,8 +35,8 @@ class TrialSpec:
     trial_id: int
     block: str
     direction_label: str
-    shading_azimuth: float | None
-    shadow_azimuth: float | None
+    shading_y: float | None
+    shadow_y: float | None
     top_is_concave: bool = False
 
 
@@ -129,22 +131,22 @@ class BumpDentExperimentApp:
         return output_dir / f"{participant_slug}_bumpdent_{timestamp}.csv"
 
     def _build_blocks(self) -> dict[str, list[TrialSpec]]:
-        azimuths = [0.0, 60.0, 120.0, 180.0, 240.0, 300.0]
+        y_values = [-1.0, -0.6, -0.2, 0.2, 0.6, 1.0]
         blocks: dict[str, list[TrialSpec]] = {name: [] for name in self.block_order}
         trial_id = 1
 
-        for azimuth in azimuths:
-            label = direction_label(azimuth)
+        for light_y in y_values:
+            label = direction_label(light_y)
             blocks["shading"].append(
-                TrialSpec(trial_id=trial_id, block="shading", direction_label=label, shading_azimuth=azimuth, shadow_azimuth=None)
+                TrialSpec(trial_id=trial_id, block="shading", direction_label=label, shading_y=light_y, shadow_y=None)
             )
             trial_id += 1
             blocks["shadow"].append(
-                TrialSpec(trial_id=trial_id, block="shadow", direction_label=label, shading_azimuth=None, shadow_azimuth=azimuth)
+                TrialSpec(trial_id=trial_id, block="shadow", direction_label=label, shading_y=None, shadow_y=light_y)
             )
             trial_id += 1
             blocks["combined"].append(
-                TrialSpec(trial_id=trial_id, block="combined", direction_label=label, shading_azimuth=azimuth, shadow_azimuth=azimuth)
+                TrialSpec(trial_id=trial_id, block="combined", direction_label=label, shading_y=light_y, shadow_y=light_y)
             )
             trial_id += 1
             blocks["conflicting"].append(
@@ -152,8 +154,8 @@ class BumpDentExperimentApp:
                     trial_id=trial_id,
                     block="conflicting",
                     direction_label=label,
-                    shading_azimuth=azimuth,
-                    shadow_azimuth=(azimuth + 180.0) % 360.0,
+                    shading_y=light_y,
+                    shadow_y=-light_y,
                 )
             )
             trial_id += 1
@@ -222,33 +224,36 @@ class BumpDentExperimentApp:
             diffuse=0.82,
             specular=0.18,
             shininess=20.0,
+            use_cosine_falloff=False,
             shadow_enabled=False,
+            light_x=0.0,
+            light_y=0.0,
+            light_z=1.0,
             shadow_strength=0.45,
             shadow_softness=0.9,
             shadow_distance=45.0,
         )
 
-        if trial.shading_azimuth is not None:
-            lx, ly, lz = vec_from_angles(trial.shading_azimuth, 45.0)
-            params.light_x = lx
-            params.light_y = ly
-            params.light_z = max(0.1, lz)
+        if trial.shading_y is not None:
+            params.light_x = 0.0
+            params.light_y = float(trial.shading_y)
+            params.light_z = 1.0
 
         if trial.block == "shadow":
             params.ambient = 1.0
             params.diffuse = 0.0
             params.specular = 0.0
             params.shadow_enabled = True
-            params.shadow_azimuth = float(trial.shadow_azimuth)
-            params.shadow_elevation = 30.0
+            params.shadow_x = 0.0
+            params.shadow_y = float(trial.shadow_y)
         elif trial.block == "combined":
             params.shadow_enabled = True
-            params.shadow_azimuth = float(trial.shadow_azimuth)
-            params.shadow_elevation = 30.0
+            params.shadow_x = 0.0
+            params.shadow_y = float(trial.shadow_y)
         elif trial.block == "conflicting":
             params.shadow_enabled = True
-            params.shadow_azimuth = float(trial.shadow_azimuth)
-            params.shadow_elevation = 30.0
+            params.shadow_x = 0.0
+            params.shadow_y = float(trial.shadow_y)
 
         return params
 
@@ -305,8 +310,8 @@ class BumpDentExperimentApp:
                 "block_index": self.block_index + 1,
                 "trial_in_block": self.trial_index + 1,
                 "direction_label": trial.direction_label,
-                "shading_azimuth": "" if trial.shading_azimuth is None else trial.shading_azimuth,
-                "shadow_azimuth": "" if trial.shadow_azimuth is None else trial.shadow_azimuth,
+                "shading_y": "" if trial.shading_y is None else trial.shading_y,
+                "shadow_y": "" if trial.shadow_y is None else trial.shadow_y,
                 "top_true_shape": "convex",
                 "response": response,
                 "timestamp": datetime.now().isoformat(timespec="seconds"),
@@ -326,8 +331,8 @@ class BumpDentExperimentApp:
             "block_index",
             "trial_in_block",
             "direction_label",
-            "shading_azimuth",
-            "shadow_azimuth",
+            "shading_y",
+            "shadow_y",
             "top_true_shape",
             "response",
             "timestamp",
@@ -398,7 +403,7 @@ class BumpDentExperimentApp:
         draw.line((left, top, left, bottom), fill="#444444", width=2)
         draw.line((left, bottom, width - 40, bottom), fill="#444444", width=2)
 
-        directions = [direction_label(azimuth) for azimuth in [0.0, 60.0, 120.0, 180.0, 240.0, 300.0]]
+        directions = [direction_label(light_y) for light_y in [-1.0, -0.6, -0.2, 0.2, 0.6, 1.0]]
         data = {label: {"convex": 0, "concave": 0} for label in directions}
         for response in self._responses_for_block(block_name):
             bucket = data[str(response["direction_label"])]
@@ -449,7 +454,7 @@ class BumpDentExperimentApp:
         draw.line((left, top, left, bottom), fill="#444444", width=2)
         draw.line((left, bottom, width - 40, bottom), fill="#444444", width=2)
 
-        directions = [direction_label(azimuth) for azimuth in [0.0, 60.0, 120.0, 180.0, 240.0, 300.0]]
+        directions = [direction_label(light_y) for light_y in [-1.0, -0.6, -0.2, 0.2, 0.6, 1.0]]
         block_colors = {
             "shading": "#2b6cb0",
             "shadow": "#c05621",

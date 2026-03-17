@@ -7,9 +7,12 @@ import argparse
 import math
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
+
+RELIEF_HEIGHT_FACTOR = 0.16
 
 
 def clamp(value: float, low: float, high: float) -> float:
@@ -26,6 +29,25 @@ def normalize(vectors: np.ndarray) -> np.ndarray:
     return vectors / np.clip(lengths, 1e-8, None)
 
 
+def shifted_sample(field: np.ndarray, shift_x: float, shift_y: float) -> np.ndarray:
+    height, width = field.shape
+    yy, xx = np.mgrid[0:height, 0:width]
+    src_x = np.clip(xx - shift_x, 0.0, width - 1.0)
+    src_y = np.clip(yy - shift_y, 0.0, height - 1.0)
+
+    x0 = np.floor(src_x).astype(np.int32)
+    x1 = np.clip(x0 + 1, 0, width - 1)
+    y0 = np.floor(src_y).astype(np.int32)
+    y1 = np.clip(y0 + 1, 0, height - 1)
+
+    wx = src_x - x0
+    wy = src_y - y0
+
+    top = field[y0, x0] * (1.0 - wx) + field[y0, x1] * wx
+    bottom = field[y1, x0] * (1.0 - wx) + field[y1, x1] * wx
+    return top * (1.0 - wy) + bottom * wy
+
+
 def vec_from_angles(azimuth_deg: float, elevation_deg: float) -> tuple[float, float, float]:
     az = math.radians(azimuth_deg)
     el = math.radians(elevation_deg)
@@ -39,6 +61,21 @@ def vec_from_angles(azimuth_deg: float, elevation_deg: float) -> tuple[float, fl
     return (x / mag, y / mag, z / mag)
 
 
+def relief_profile(radial: np.ndarray, use_cosine_falloff: bool, use_flat_profile: bool) -> np.ndarray:
+    profile = np.zeros_like(radial, dtype=np.float32)
+    inside = radial <= 1.0
+    if not np.any(inside):
+        return profile
+
+    if use_cosine_falloff:
+        base = 0.5 * (1.0 + np.cos(np.pi * radial[inside]))
+        profile[inside] = base ** 4 if use_flat_profile else base
+    else:
+        base = np.clip(1.0 - radial[inside] ** 2, 0.0, 1.0)
+        profile[inside] = base ** 2 if use_flat_profile else base
+    return profile
+
+
 @dataclass
 class RenderParams:
     width: int = 420
@@ -50,8 +87,8 @@ class RenderParams:
     center_y: float = 0.0
     vertical_gap: float = 38.0
     top_is_concave: bool = False
-    bump_strength: float = 1.0
-    dent_strength: float = 1.0
+    bump_strength: float = 0.95
+    dent_strength: float = 1.25
     light_x: float = 0.0
     light_y: float = 0.75
     light_z: float = 1.1
@@ -61,10 +98,12 @@ class RenderParams:
     shininess: float = 20.0
     edge_softness: float = 1.8
     use_cosine_falloff: bool = True
-    use_flat_profile: bool = False
+    use_flat_profile: bool = True
     shadow_enabled: bool = False
     shadow_azimuth: float = 220.0
     shadow_elevation: float = 30.0
+    shadow_x: Optional[float] = None
+    shadow_y: Optional[float] = None
     shadow_strength: float = 0.45
     shadow_softness: float = 0.9
     shadow_distance: float = 45.0
@@ -94,19 +133,14 @@ def _shade_disc(
 
     sign = -1.0 if concave else 1.0
     if params.use_cosine_falloff:
-        height_scale = radius * 0.34 * strength
-        profile = np.zeros_like(xx, dtype=np.float32)
-        if params.use_flat_profile:
-            # A squared cosine cap keeps the center flatter and reduces the "ball" look.
-            profile[inside] = (0.5 * (1.0 + np.cos(np.pi * radial[inside]))) ** 2
-        else:
-            profile[inside] = 0.5 * (1.0 + np.cos(np.pi * radial[inside]))
+        height_scale = radius * RELIEF_HEIGHT_FACTOR * strength
+        profile = relief_profile(radial, params.use_cosine_falloff, params.use_flat_profile)
 
         d_profile_dr = np.zeros_like(xx, dtype=np.float32)
         if params.use_flat_profile:
             base = 0.5 * (1.0 + np.cos(np.pi * radial[inside]))
             d_base_dr = -0.5 * np.pi * np.sin(np.pi * radial[inside])
-            d_profile_dr[inside] = 2.0 * base * d_base_dr
+            d_profile_dr[inside] = 4.0 * (base ** 3) * d_base_dr
         else:
             d_profile_dr[inside] = -0.5 * np.pi * np.sin(np.pi * radial[inside])
         d_height_dr = sign * height_scale * d_profile_dr / radius
@@ -169,40 +203,101 @@ def _shade_disc(
     return image, alpha
 
 
-def _shadow_mask(
+def render_side_profile(params: RenderParams, width: int = 560, height: int = 260) -> Image.Image:
+    image = Image.new("RGB", (width, height), (244, 246, 248))
+    draw = ImageDraw.Draw(image)
+
+    margin_x = 36
+    baseline_y = height // 2
+    cx = width * 0.5 + params.center_x
+    profile_width = max(40.0, params.radius * 2.0)
+    start_x = max(margin_x, int(round(cx - profile_width * 0.5)))
+    end_x = min(width - margin_x, int(round(cx + profile_width * 0.5)))
+    xs = np.arange(start_x, end_x + 1, dtype=np.float32)
+    radial = np.abs(xs - cx) / max(params.radius, 1e-6)
+    profile = relief_profile(radial, params.use_cosine_falloff, params.use_flat_profile)
+
+    depth_scale = params.radius * RELIEF_HEIGHT_FACTOR
+    top_profile = -depth_scale * params.bump_strength * profile
+    bottom_profile = depth_scale * params.dent_strength * profile
+    if params.top_is_concave:
+        top_profile = depth_scale * params.dent_strength * profile
+        bottom_profile = -depth_scale * params.bump_strength * profile
+
+    gap_offset = params.radius + params.vertical_gap * 0.5
+    top_baseline = baseline_y - gap_offset
+    bottom_baseline = baseline_y + gap_offset
+
+    draw.line((margin_x, baseline_y, width - margin_x, baseline_y), fill=(180, 184, 188), width=1)
+    draw.line((margin_x, top_baseline, width - margin_x, top_baseline), fill=(210, 214, 218), width=1)
+    draw.line((margin_x, bottom_baseline, width - margin_x, bottom_baseline), fill=(210, 214, 218), width=1)
+
+    top_points = [(float(x), float(top_baseline + y)) for x, y in zip(xs, top_profile)]
+    bottom_points = [(float(x), float(bottom_baseline + y)) for x, y in zip(xs, bottom_profile)]
+
+    draw.line(top_points, fill=(43, 108, 176), width=3)
+    draw.line(bottom_points, fill=(192, 86, 33), width=3)
+
+    label_y = 16
+    top_label = "top dent" if params.top_is_concave else "top bump"
+    bottom_label = "bottom bump" if params.top_is_concave else "bottom dent"
+    draw.text((margin_x, label_y), top_label, fill=(43, 108, 176))
+    draw.text((width - margin_x - 96, label_y), bottom_label, fill=(192, 86, 33))
+    return image
+
+
+def _shadow_direction(params: RenderParams) -> np.ndarray | None:
+    if params.shadow_x is not None or params.shadow_y is not None:
+        shadow_xy = np.array(
+            [0.0 if params.shadow_x is None else params.shadow_x, 0.0 if params.shadow_y is None else params.shadow_y],
+            dtype=np.float32,
+        )
+    else:
+        shadow_dir = vec_from_angles(params.shadow_azimuth, params.shadow_elevation)
+        shadow_xy = np.array([shadow_dir[0], shadow_dir[1]], dtype=np.float32)
+
+    shadow_xy_norm = np.linalg.norm(shadow_xy)
+    if shadow_xy_norm <= 1e-8:
+        return None
+    return shadow_xy / shadow_xy_norm
+
+
+def _shadow_masks(
     xx: np.ndarray,
     yy: np.ndarray,
     center_x: float,
     center_y: float,
     radius: float,
+    concave: bool,
+    strength: float,
     params: RenderParams,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     if not params.shadow_enabled or params.shadow_strength <= 0.0:
-        return np.zeros_like(xx, dtype=np.float32)
+        empty = np.zeros_like(xx, dtype=np.float32)
+        return empty, empty
 
     dx = xx - center_x
     dy_up = center_y - yy
     radial_distance = np.sqrt(np.clip(dx * dx + dy_up * dy_up, 0.0, None))
-    edge_distance = radial_distance - radius
-
-    shadow_dir = vec_from_angles(params.shadow_azimuth, params.shadow_elevation)
-    shadow_xy = np.array([shadow_dir[0], shadow_dir[1]], dtype=np.float32)
-    shadow_xy_norm = np.linalg.norm(shadow_xy)
-    if shadow_xy_norm <= 1e-8:
-        return np.zeros_like(xx, dtype=np.float32)
-    shadow_xy /= shadow_xy_norm
-
-    width = radius * (0.03 + 0.17 * (params.shadow_softness / 2.5)) + params.shadow_distance
+    width = radius * (0.02 + 0.10 * (params.shadow_softness / 2.5)) + params.shadow_distance * 0.35
     if width <= 1e-8:
-        return np.zeros_like(xx, dtype=np.float32)
+        empty = np.zeros_like(xx, dtype=np.float32)
+        return empty, empty
 
-    ring = (edge_distance >= 0.0) & (edge_distance <= width)
-    mask = np.zeros_like(xx, dtype=np.float32)
-    if not np.any(ring):
-        return mask
+    shadow_xy = _shadow_direction(params)
+    if shadow_xy is None:
+        empty = np.zeros_like(xx, dtype=np.float32)
+        return empty, empty
 
-    t = np.clip(edge_distance / width, 0.0, 1.0)
-    falloff = 1.0 - t
+    background_mask = np.zeros_like(xx, dtype=np.float32)
+    disc_mask = np.zeros_like(xx, dtype=np.float32)
+
+    edge_distance = radius - radial_distance
+    alpha = smoothstep(
+        np.zeros_like(edge_distance),
+        np.full_like(edge_distance, params.edge_softness),
+        edge_distance,
+    )
 
     safe_distance = np.where(radial_distance > 1e-6, radial_distance, 1.0)
     ndx = dx / safe_distance
@@ -210,8 +305,38 @@ def _shadow_mask(
     light_dot = ndx * shadow_xy[0] + ndy * shadow_xy[1]
     dir_mod = np.clip(-light_dot, 0.0, 1.0)
 
-    mask[ring] = params.shadow_strength * falloff[ring] * dir_mod[ring]
-    return np.clip(mask, 0.0, 1.0)
+    screen_shift_x = -shadow_xy[0]
+    screen_shift_y = shadow_xy[1]
+    direction_scale = 0.45 + 1.35 * abs(shadow_xy[1])
+    shadow_extent = max(1.0, (width + radius * RELIEF_HEIGHT_FACTOR * strength * 0.8) * direction_scale)
+    steps = max(12, int(round(16.0 + params.shadow_softness * 8.0)))
+
+    if concave:
+        inner_dir_mod = np.clip(light_dot, 0.0, 1.0)
+        accum = np.zeros_like(xx, dtype=np.float32)
+        weight_sum = np.zeros_like(xx, dtype=np.float32)
+        for step in range(1, steps + 1):
+            frac = step / steps
+            shifted_alpha = shifted_sample(alpha, screen_shift_x * shadow_extent * frac, screen_shift_y * shadow_extent * frac)
+            layer = alpha * np.clip(1.0 - shifted_alpha, 0.0, 1.0)
+            weight = (1.0 - frac) ** 1.5
+            accum += layer * weight
+            weight_sum += weight
+        disc_mask = (accum / np.clip(weight_sum, 1e-8, None)) * inner_dir_mod * params.shadow_strength
+    else:
+        outside = 1.0 - alpha
+        accum = np.zeros_like(xx, dtype=np.float32)
+        weight_sum = np.zeros_like(xx, dtype=np.float32)
+        for step in range(1, steps + 1):
+            frac = step / steps
+            shifted_alpha = shifted_sample(alpha, screen_shift_x * shadow_extent * frac, screen_shift_y * shadow_extent * frac)
+            layer = outside * shifted_alpha
+            weight = (1.0 - frac) ** 1.35
+            accum += layer * weight
+            weight_sum += weight
+        background_mask = (accum / np.clip(weight_sum, 1e-8, None)) * dir_mod * params.shadow_strength
+
+    return np.clip(background_mask, 0.0, 1.0), np.clip(disc_mask, 0.0, 1.0)
 
 
 def render_image(params: RenderParams) -> Image.Image:
@@ -226,21 +351,33 @@ def render_image(params: RenderParams) -> Image.Image:
     top_y = cy - (params.radius + params.vertical_gap * 0.5)
     bottom_y = cy + (params.radius + params.vertical_gap * 0.5)
 
+    top_concave = params.top_is_concave
+    bottom_concave = not params.top_is_concave
+    top_strength = params.dent_strength if top_concave else params.bump_strength
+    bottom_strength = params.bump_strength if top_concave else params.dent_strength
+
+    top_bg_shadow = np.zeros_like(xx, dtype=np.float32)
+    top_disc_shadow = np.zeros_like(xx, dtype=np.float32)
+    bottom_bg_shadow = np.zeros_like(xx, dtype=np.float32)
+    bottom_disc_shadow = np.zeros_like(xx, dtype=np.float32)
     if params.shadow_enabled:
-        bump_shadow = _shadow_mask(xx, yy, cx, top_y, params.radius, params)
-        dent_shadow = _shadow_mask(xx, yy, cx, bottom_y, params.radius, params)
-        combined_shadow = np.clip(bump_shadow + dent_shadow, 0.0, 1.0)
+        top_bg_shadow, top_disc_shadow = _shadow_masks(xx, yy, cx, top_y, params.radius, top_concave, top_strength, params)
+        bottom_bg_shadow, bottom_disc_shadow = _shadow_masks(
+            xx, yy, cx, bottom_y, params.radius, bottom_concave, bottom_strength, params
+        )
+        combined_shadow = np.clip(top_bg_shadow + bottom_bg_shadow, 0.0, 1.0)
         background *= 1.0 - combined_shadow
 
-    top_strength = params.dent_strength if params.top_is_concave else params.bump_strength
-    bottom_strength = params.bump_strength if params.top_is_concave else params.dent_strength
-
     top_disc, top_alpha = _shade_disc(
-        xx, yy, cx, top_y, params.radius, concave=params.top_is_concave, strength=top_strength, params=params
+        xx, yy, cx, top_y, params.radius, concave=top_concave, strength=top_strength, params=params
     )
     bottom_disc, bottom_alpha = _shade_disc(
-        xx, yy, cx, bottom_y, params.radius, concave=not params.top_is_concave, strength=bottom_strength, params=params
+        xx, yy, cx, bottom_y, params.radius, concave=bottom_concave, strength=bottom_strength, params=params
     )
+
+    if params.shadow_enabled:
+        top_disc *= 1.0 - top_disc_shadow
+        bottom_disc *= 1.0 - bottom_disc_shadow
 
     image = background.copy()
     image = image * (1.0 - top_alpha) + top_disc * top_alpha
