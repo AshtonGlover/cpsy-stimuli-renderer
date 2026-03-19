@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Interactive convex/concave sphere renderer with decoupled shading and shadow cues."""
+"""Interactive convex/concave bump renderer — smooth bump/dent embedded in a flat surface."""
 
 import math
 import tkinter as tk
@@ -22,10 +22,17 @@ def vec_from_angles(azimuth_deg: float, elevation_deg: float):
         return (0.0, 0.0, 1.0)
     return (x / mag, y / mag, z / mag)
 
-class SphereRendererGUI:
+def normalize(x, y, z):
+    mag = math.sqrt(x*x + y*y + z*z)
+    if mag < 1e-9:
+        return (0.0, 0.0, 1.0)
+    return (x/mag, y/mag, z/mag)
+
+
+class BumpRendererGUI:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("Convex/Concave Sphere Renderer")
+        self.root.title("Convex/Concave Bump Renderer")
 
         self.width = 360
         self.height = 360
@@ -49,6 +56,10 @@ class SphereRendererGUI:
         self.shadow_distance_var = tk.DoubleVar(value=45.0)
 
         self.radius_var = tk.DoubleVar(value=95.0)
+
+        # Height scale: how "tall" the bump is relative to its radius.
+        # 1.0 ≈ hemisphere; 0.2 ≈ very shallow disc.
+        self.height_scale_var = tk.DoubleVar(value=0.35)
 
         self._build_ui()
         self.render()
@@ -127,6 +138,7 @@ class SphereRendererGUI:
                 ("Background", self.bg_gray_var, 0, 255),
                 ("Albedo", self.sphere_albedo_var, 20, 255),
                 ("Radius", self.radius_var, 50, 130),
+                ("Height", self.height_scale_var, 0.05, 1.5),
             ],
         )
 
@@ -134,7 +146,8 @@ class SphereRendererGUI:
             controls,
             text=(
                 "Tip: set different diffuse vs shadow azimuths\n"
-                "to create conflicting shape cues."
+                "to create conflicting shape cues.\n"
+                "Height controls bump depth (low = shallow)."
             ),
             justify="left",
         )
@@ -177,7 +190,9 @@ class SphereRendererGUI:
         cx, cy = w * 0.5, h * 0.5
 
         radius = self.radius_var.get()
-        r2 = radius * radius
+        height_scale = self.height_scale_var.get()
+        # Maximum bump height in the same units as radius
+        max_z = radius * height_scale
 
         bg_gray = int(self.bg_gray_var.get())
         sphere_albedo = int(self.sphere_albedo_var.get())
@@ -194,6 +209,9 @@ class SphereRendererGUI:
 
         shape_is_concave = self.shape_var.get() == "concave"
 
+        # Flat-surface normal (used outside the bump)
+        flat_normal = (0.0, 0.0, 1.0)
+
         rows = []
         for py in range(h):
             row_colors = []
@@ -201,44 +219,68 @@ class SphereRendererGUI:
             for px in range(w):
                 x = (px + 0.5) - cx
 
+                # --- Directional contact shadow on background ---
                 shadow_factor = 0.0
                 d = math.sqrt(max(x * x + y * y, 0.0))
                 edge_dist = d - radius
                 if edge_dist >= 0.0:
-                    # Directional contact shadow on the far side of the light only.
                     edge_width = radius * (0.03 + 0.17 * (shadow_softness / 2.5)) + 1.0 * shadow_spread
                     if edge_dist < edge_width:
                         t = clamp01(edge_dist / max(1e-6, edge_width))
                         falloff = 1.0 - t
-
                         dir_mod = 0.0
                         if d > 1e-6:
                             ndx = x / d
                             ndy = -y / d
                             light_dot = ndx * shadow_light[0] + ndy * shadow_light[1]
-                            # Only darken where the point lies away from the incoming light.
                             dir_mod = clamp01(-light_dot)
-
                         shadow_factor = shadow_strength * falloff * dir_mod
 
-                base = bg_gray * (1.0 - shadow_factor)
-                intensity = base
+                # --- Shading ---
+                r_norm = d / radius  # normalized radial distance
 
-                dsq = x * x + y * y
-                if dsq <= r2:
-                    nx = x / radius
-                    ny = -y / radius
-                    nz_sq = max(0.0, 1.0 - nx * nx - ny * ny)
-                    nz = math.sqrt(nz_sq)
+                if r_norm <= 1.0:
+                    # --- Cosine bump height field ---
+                    # h(r) = max_z * 0.5 * (1 + cos(pi * r_norm))
+                    # This is 1 at center, 0 at edge, C1-continuous.
+                    # dh/dr = -max_z * 0.5 * pi * sin(pi * r_norm)
+                    dh_dr = -max_z * 0.5 * math.pi * math.sin(math.pi * r_norm)
+
+                    # Surface gradient in x and y:
+                    # dh/dx = dh/dr * dr/dx = dh/dr * (x / (r * radius))  [chain rule]
+                    if d > 1e-9:
+                        dh_dx = dh_dr * (x / (d * radius))
+                        dh_dy = dh_dr * (y / (d * radius))
+                    else:
+                        dh_dx = 0.0
+                        dh_dy = 0.0
+
+                    # Surface normal from gradient: N = normalize(-dh/dx, -dh/dy, 1)
+                    nx_raw = -dh_dx
+                    ny_raw = -dh_dy
+                    nz_raw = 1.0
 
                     if shape_is_concave:
-                        nx = -nx
-                        ny = -ny
+                        # Flip the gradient to invert the bump into a dent
+                        nx_raw = -nx_raw
+                        ny_raw = -ny_raw
+
+                    nx, ny, nz = normalize(nx_raw, ny_raw, nz_raw)
+
+                    # Flip y for screen→world convention
+                    ny = -ny
 
                     lambert = max(0.0, nx * diffuse_light[0] + ny * diffuse_light[1] + nz * diffuse_light[2])
                     lit = ambient + diffuse_strength * lambert
                     lit = clamp01(lit)
                     intensity = sphere_albedo * lit
+                else:
+                    # Flat background with contact shadow
+                    flat_lambert = max(0.0, flat_normal[2] * diffuse_light[2])
+                    lit = ambient + diffuse_strength * flat_lambert
+                    lit = clamp01(lit)
+                    base = bg_gray * lit * (1.0 - shadow_factor)
+                    intensity = base
 
                 g = int(max(0, min(255, round(intensity))))
                 row_colors.append(f"#{g:02x}{g:02x}{g:02x}")
@@ -248,7 +290,7 @@ class SphereRendererGUI:
 
 def main():
     root = tk.Tk()
-    app = SphereRendererGUI(root)
+    app = BumpRendererGUI(root)
     _ = app
     root.mainloop()
 
