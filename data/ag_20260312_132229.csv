@@ -1,0 +1,16 @@
+participant_id,trial_id,order_index,shape,diffuse_direction,diffuse_azimuth,shadow_direction,shadow_azimuth,elevation,response,response_label,timestamp
+ag,30,1,convex,lower-left,240.0,lower-right,300.0,45.0,4,mostly concave,2026-03-12T13:23:28
+ag,11,2,convex,upper-right,60.0,lower-left,240.0,45.0,3,both,2026-03-12T13:23:29
+ag,3,3,convex,right,0.0,upper-left,120.0,45.0,2,mostly convex,2026-03-12T13:23:30
+ag,26,4,convex,lower-left,240.0,upper-right,60.0,45.0,5,concave,2026-03-12T13:23:31
+ag,27,5,convex,lower-left,240.0,upper-left,120.0,45.0,1,convex,2026-03-12T13:23:32
+ag,8,6,convex,upper-right,60.0,upper-right,60.0,45.0,4,mostly concave,2026-03-12T13:23:33
+ag,17,7,convex,upper-left,120.0,lower-left,240.0,45.0,2,mostly convex,2026-03-12T13:23:34
+ag,9,8,convex,upper-right,60.0,upper-left,120.0,45.0,3,both,2026-03-12T13:23:35
+ag,1,9,convex,right,0.0,right,0.0,45.0,4,mostly concave,2026-03-12T13:23:35
+ag,23,10,convex,left,180.0,lower-left,240.0,45.0,5,concave,2026-03-12T13:25:04
+ag,10,11,convex,upper-right,60.0,left,180.0,45.0,1,convex,2026-03-12T13:25:09
+ag,24,12,convex,left,180.0,lower-right,300.0,45.0,2,mostly convex,2026-03-12T13:25:11
+ag,36,13,convex,lower-right,300.0,lower-right,300.0,45.0,4,mostly concave,2026-03-12T13:27:21
+ag,7,14,convex,upper-right,60.0,right,0.0,45.0,2,mostly convex,2026-03-12T13:27:26
+ag,15,15,convex,upper-left,120.0,upper-left,120.0,45.0,4,mostly concave,2026-03-12T13:27:31
