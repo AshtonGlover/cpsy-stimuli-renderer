@@ -19,7 +19,7 @@ OUTPUT_DIRNAME = "results"
 LABELS_FILENAME = "labels.csv"
 ROTATED_IMAGE_SUFFIX = "_rot180"
 TRIAL_REPETITIONS = 20
-IMAGE_DISPLAY_MS = 1000
+IMAGE_DISPLAY_MS = 850
 OUTPUT_FIELDNAMES = [
     "participant_id",
     "trial_number",
@@ -179,11 +179,18 @@ class TrialRunner:
         self.root.configure(bg=APP_BG)
 
         self.status_var = tk.StringVar()
-        self.prompt_var = tk.StringVar(value="Is the top dent convex or concave?")
+        self.prompt_var = tk.StringVar(value="Which stimulus is convex? (1 = top, 2 = bottom)")
         self.participant_id_var = tk.StringVar()
         self.instructions_text = (
             "You will be asked whether the top stimulus is convex or concave on each trial.\n\n"
-            "For each image, exactly one stimulus is convex and one is concave."
+            "For each image, exactly one stimulus is convex and one is concave. If they both appear convex, select the one that bumps out more."
+        )
+        self.instructions_text = (
+        "For each image, exactly one stimulus is convex and one is concave. If they both appear convex, select the one that bumps out more.\n\n"
+        "After viewing each image, indicate which stimulus is convex.\n\n"
+        "Press 1 if the TOP stimulus is convex.\n"
+        "Press 2 if the BOTTOM stimulus is convex.\n\n"
+        "[SPACE] to continue"
         )
 
         self.main_frame = tk.Frame(root, bg=APP_BG)
@@ -320,7 +327,7 @@ class TrialRunner:
 
         self.instructions_label = tk.Label(
             self.instructions_screen,
-            text=f"{self.instructions_text}\n\nPress Start when you are ready.",
+            text=f"{self.instructions_text}",
             font=("Helvetica", 15),
             fg=TEXT_PRIMARY,
             bg=CARD_BG,
@@ -329,16 +336,16 @@ class TrialRunner:
         )
         self.instructions_label.pack(pady=(0, 24))
 
-        self.instructions_keys = tk.Label(
-            self.instructions_screen,
-            text="During the task: press C for Convex or V for Concave.",
-            font=("Helvetica", 12),
-            fg=TEXT_MUTED,
-            bg=CARD_BG,
-            justify="center",
-            wraplength=620,
-        )
-        self.instructions_keys.pack(pady=(0, 28))
+        # self.instructions_keys = tk.Label(
+        #     self.instructions_screen,
+        #     text="During the task: press C for Convex or V for Concave.",
+        #     font=("Helvetica", 12),
+        #     fg=TEXT_MUTED,
+        #     bg=CARD_BG,
+        #     justify="center",
+        #     wraplength=620,
+        # )
+        # self.instructions_keys.pack(pady=(0, 28))
 
         self.start_button = tk.Button(
             self.instructions_screen,
@@ -350,38 +357,37 @@ class TrialRunner:
         )
         self.start_button.pack()
 
-        self.convex_button = tk.Button(
-            self.trial_controls,
-            text="Convex (C)",
-            width=18,
-            font=("Helvetica", 13, "bold"),
-            command=lambda: self.record_response("convex"),
-            **self._response_button_style(
-                bg=CONVEX_BUTTON_BG,
-                active_bg=CONVEX_BUTTON_ACTIVE_BG,
-                fg="#ffffff",
-            ),
-        )
-        self.convex_button.pack(side="left", padx=12)
+        # self.convex_button = tk.Button(
+        #     self.trial_controls,
+        #     text="Top (1)",
+        #     width=18,
+        #     font=("Helvetica", 13, "bold"),
+        #     command=lambda: self.record_response("convex"),
+        #     **self._response_button_style(
+        #         bg=CONVEX_BUTTON_BG,
+        #         active_bg=CONVEX_BUTTON_ACTIVE_BG,
+        #         fg="#ffffff",
+        #     ),
+        # )
+        # self.convex_button.pack(side="left", padx=12)
 
-        self.concave_button = tk.Button(
-            self.trial_controls,
-            text="Concave (V)",
-            width=18,
-            font=("Helvetica", 13, "bold"),
-            command=lambda: self.record_response("concave"),
-            **self._response_button_style(
-                bg=CONCAVE_BUTTON_BG,
-                active_bg=CONCAVE_BUTTON_ACTIVE_BG,
-                fg="#ffffff",
-            ),
-        )
-        self.concave_button.pack(side="left", padx=12)
+        # self.concave_button = tk.Button(
+        #     self.trial_controls,
+        #     text="Bottom (2)",
+        #     width=18,
+        #     font=("Helvetica", 13, "bold"),
+        #     command=lambda: self.record_response("concave"),
+        #     **self._response_button_style(
+        #         bg=CONCAVE_BUTTON_BG,
+        #         active_bg=CONCAVE_BUTTON_ACTIVE_BG,
+        #         fg="#ffffff",
+        #     ),
+        # )
+        # self.concave_button.pack(side="left", padx=12)
 
-        self.root.bind("<c>", lambda _event: self.record_response("convex"))
-        self.root.bind("<C>", lambda _event: self.record_response("convex"))
-        self.root.bind("<v>", lambda _event: self.record_response("concave"))
-        self.root.bind("<V>", lambda _event: self.record_response("concave"))
+        self.root.bind("<Key-1>", lambda _e: self.record_response("top"))
+        self.root.bind("<Key-2>", lambda _e: self.record_response("bottom"))
+        self.root.bind("<space>", self.handle_return_key)
         self.root.bind("<Return>", self.handle_return_key)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -542,8 +548,8 @@ class TrialRunner:
             justify="center",
         )
         self._show_screen(self.id_screen)
-        self.convex_button.configure(state="disabled")
-        self.concave_button.configure(state="disabled")
+        # self.convex_button.configure(state="disabled")
+        # self.concave_button.configure(state="disabled")
 
     def go_to_instructions(self) -> None:
         participant_id = self.participant_id_var.get().strip()
@@ -571,10 +577,10 @@ class TrialRunner:
 
         self.instructions_active = False
         self._show_screen(self.trial_controls)
-        self.convex_button.configure(state="normal")
-        self.concave_button.configure(state="normal")
+        # self.convex_button.configure(state="normal")
+        # self.concave_button.configure(state="normal")
         self.prompt_var.set(
-            "Press C if the top stimulus is convex and V if the top stimulus is concave."
+            "Indicate which stimulus is convex. Press 1 for top, press 2 for bottom."
         )
         self.show_current_trial()
 
@@ -618,8 +624,8 @@ class TrialRunner:
         self.status_var.set("Experiment complete")
         saved_name = self.output_path.name if self.output_path is not None else "results file"
         self.prompt_var.set(f"Responses saved to {saved_name}")
-        self.convex_button.configure(state="disabled")
-        self.concave_button.configure(state="disabled")
+        # self.convex_button.configure(state="disabled")
+        # self.concave_button.configure(state="disabled")
         self.image_label.configure(
             image="",
             text="All trials are complete.",
