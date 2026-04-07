@@ -20,6 +20,7 @@ LABELS_FILENAME = "labels.csv"
 ROTATED_IMAGE_SUFFIX = "_rot180"
 TRIAL_REPETITIONS = 20
 IMAGE_DISPLAY_MS = 850
+BATCH_COUNT = 4
 OUTPUT_FIELDNAMES = [
     "participant_id",
     "trial_number",
@@ -173,6 +174,14 @@ class TrialRunner:
         self.current_photo: ImageTk.PhotoImage | None = None
         self.hide_image_after_id: str | None = None
         self.instructions_active = True
+        self.awaiting_batch_resume = False
+
+        if len(self.trials) % BATCH_COUNT != 0:
+            raise ValueError(
+                f"Total trials ({len(self.trials)}) is not divisible by {BATCH_COUNT}, so equal sets cannot be created."
+            )
+        self.batch_count = BATCH_COUNT
+        self.batch_size = len(self.trials) // self.batch_count
 
         self.root.title("Top Dent Trial Runner")
         self.root.geometry(WINDOW_SIZE)
@@ -180,17 +189,15 @@ class TrialRunner:
 
         self.status_var = tk.StringVar()
         self.prompt_var = tk.StringVar(value="Which stimulus is convex? (1 = top, 2 = bottom)")
+        self.break_message_var = tk.StringVar()
         self.participant_id_var = tk.StringVar()
         self.instructions_text = (
-            "You will be asked whether the top stimulus is convex or concave on each trial.\n\n"
-            "For each image, exactly one stimulus is convex and one is concave. If they both appear convex, select the one that bumps out more."
-        )
-        self.instructions_text = (
-        "For each image, exactly one stimulus is convex and one is concave. If they both appear convex, select the one that bumps out more.\n\n"
-        "After viewing each image, indicate which stimulus is convex.\n\n"
-        "Press 1 if the TOP stimulus is convex.\n"
-        "Press 2 if the BOTTOM stimulus is convex.\n\n"
-        "[SPACE] to continue"
+            "For each image, exactly one stimulus is convex and one is concave. If they both appear convex, select the one that bumps out more.\n\n"
+            "After viewing each image, indicate which stimulus is convex.\n\n"
+            "Press 1 if the TOP stimulus is convex.\n"
+            "Press 2 if the BOTTOM stimulus is convex.\n\n"
+            "Trials are split into 4 equal sets. After each set, choose Continue or Take Break.\n\n"
+            "[SPACE] to continue"
         )
 
         self.main_frame = tk.Frame(root, bg=APP_BG)
@@ -262,6 +269,15 @@ class TrialRunner:
             pady=36,
         )
         self.trial_controls = tk.Frame(self.screen_frame, bg=APP_BG)
+        self.break_screen = tk.Frame(
+            self.screen_frame,
+            bg=CARD_BG,
+            highlightbackground=CARD_BORDER,
+            highlightthickness=1,
+            bd=0,
+            padx=40,
+            pady=36,
+        )
 
         self.id_screen_label = tk.Label(
             self.id_screen,
@@ -356,6 +372,40 @@ class TrialRunner:
             **self._primary_button_style(),
         )
         self.start_button.pack()
+
+        self.break_label = tk.Label(
+            self.break_screen,
+            textvariable=self.break_message_var,
+            font=("Helvetica", 15),
+            fg=TEXT_PRIMARY,
+            bg=CARD_BG,
+            justify="center",
+            wraplength=620,
+        )
+        self.break_label.pack(pady=(0, 28))
+
+        self.break_buttons = tk.Frame(self.break_screen, bg=CARD_BG)
+        self.break_buttons.pack()
+
+        self.take_break_button = tk.Button(
+            self.break_buttons,
+            text="Take Break",
+            width=18,
+            font=("Helvetica", 13, "bold"),
+            command=self.take_break,
+            **self._primary_button_style(),
+        )
+        self.take_break_button.pack(side="left", padx=12)
+
+        self.continue_button = tk.Button(
+            self.break_buttons,
+            text="Continue",
+            width=18,
+            font=("Helvetica", 13, "bold"),
+            command=self.continue_after_break,
+            **self._primary_button_style(),
+        )
+        self.continue_button.pack(side="left", padx=12)
 
         # self.convex_button = tk.Button(
         #     self.trial_controls,
@@ -512,7 +562,10 @@ class TrialRunner:
 
         self._cancel_pending_image_hide()
         trial = self.trials[self.current_index]
-        self.status_var.set(f"Trial {self.current_index + 1} of {len(self.trials)}")
+        batch_number = (self.current_index // self.batch_size) + 1
+        self.status_var.set(
+            f"Set {batch_number} of {self.batch_count} - Trial {self.current_index + 1} of {len(self.trials)}"
+        )
 
         image = Image.open(trial.image_path)
         image = ImageOps.exif_transpose(image)
@@ -533,13 +586,52 @@ class TrialRunner:
         self.image_label.configure(image="", text="")
 
     def _show_screen(self, screen: tk.Frame | None) -> None:
-        for frame in (self.id_screen, self.instructions_screen, self.trial_controls):
+        for frame in (self.id_screen, self.instructions_screen, self.trial_controls, self.break_screen):
             frame.pack_forget()
 
         if screen is not None:
             screen.pack()
 
+    def show_break_screen(self) -> None:
+        completed_batches = self.current_index // self.batch_size
+        next_batch = completed_batches + 1
+        self.awaiting_batch_resume = True
+        self.status_var.set(f"Set {completed_batches} of {self.batch_count} complete")
+        self.prompt_var.set("Take a break or continue.")
+        self.current_photo = None
+        self.image_label.configure(image="", text="")
+        self.break_message_var.set(
+            f"Set {completed_batches} of {self.batch_count} complete.\n\n"
+            f"Choose Continue to start set {next_batch}, or Take Break."
+        )
+        self.take_break_button.configure(state="normal")
+        self.continue_button.configure(state="normal")
+        self._show_screen(self.break_screen)
+
+    def take_break(self) -> None:
+        if not self.awaiting_batch_resume:
+            return
+
+        completed_batches = self.current_index // self.batch_size
+        next_batch = completed_batches + 1
+        self.status_var.set(f"Break after set {completed_batches} of {self.batch_count}")
+        self.prompt_var.set("Break in progress. Press Continue when ready.")
+        self.break_message_var.set(
+            f"Break started.\n\nPress Continue when you are ready for set {next_batch} of {self.batch_count}."
+        )
+        self.take_break_button.configure(state="disabled")
+
+    def continue_after_break(self) -> None:
+        if not self.awaiting_batch_resume:
+            return
+
+        self.awaiting_batch_resume = False
+        self._show_screen(self.trial_controls)
+        self.prompt_var.set("Indicate which stimulus is convex. Press 1 for top, press 2 for bottom.")
+        self.show_current_trial()
+
     def show_id_screen(self) -> None:
+        self.awaiting_batch_resume = False
         self.status_var.set("Participant Setup")
         self.prompt_var.set("Enter a participant ID to continue.")
         self.image_label.configure(
@@ -576,6 +668,7 @@ class TrialRunner:
         self._initialize_output(participant_id)
 
         self.instructions_active = False
+        self.awaiting_batch_resume = False
         self._show_screen(self.trial_controls)
         # self.convex_button.configure(state="normal")
         # self.concave_button.configure(state="normal")
@@ -590,9 +683,12 @@ class TrialRunner:
             return
         if self.instructions_active and self.instructions_screen.winfo_manager():
             self.start_trials()
+            return
+        if self.awaiting_batch_resume:
+            self.continue_after_break()
 
     def record_response(self, response: str) -> None:
-        if self.instructions_active or self.current_index >= len(self.trials):
+        if self.instructions_active or self.awaiting_batch_resume or self.current_index >= len(self.trials):
             return
 
         trial = self.trials[self.current_index]
@@ -616,10 +712,17 @@ class TrialRunner:
 
         self._cancel_pending_image_hide()
         self.current_index += 1
+        if self.current_index >= len(self.trials):
+            self.show_current_trial()
+            return
+        if self.current_index % self.batch_size == 0:
+            self.show_break_screen()
+            return
         self.show_current_trial()
 
     def finish_experiment(self) -> None:
         self._cancel_pending_image_hide()
+        self.awaiting_batch_resume = False
         self.image_label.configure(image="", text="")
         self.status_var.set("Experiment complete")
         saved_name = self.output_path.name if self.output_path is not None else "results file"
@@ -655,12 +758,17 @@ def main() -> int:
         return 1
 
     root = tk.Tk()
-    runner = TrialRunner(
-        root,
-        trials=trials,
-        output_root=output_root,
-        labels_by_path=labels_by_path,
-    )
+    try:
+        runner = TrialRunner(
+            root,
+            trials=trials,
+            output_root=output_root,
+            labels_by_path=labels_by_path,
+        )
+    except ValueError as exc:
+        root.destroy()
+        print(exc, file=sys.stderr)
+        return 1
     try:
         root.mainloop()
     finally:
