@@ -1,0 +1,7 @@
+participant_id,trial_number,category,image_id,image_name,image_path,rotation_degrees,response,timestamp
+testingagain2,1,shadow,27,78.png,/Users/ashtonglover/Desktop/cpsy-stimuli-renderer/trial-runner/stimuli/shadow/78.png,0,top,2026-04-09T13:28:19
+testingagain2,2,incongruent,36,60_rot180.png,/Users/ashtonglover/Desktop/cpsy-stimuli-renderer/trial-runner/stimuli/incongruent/60_rot180.png,180,top,2026-04-09T13:28:20
+testingagain2,3,shadow,16,42_rot180.png,/Users/ashtonglover/Desktop/cpsy-stimuli-renderer/trial-runner/stimuli/shadow/42_rot180.png,180,bottom,2026-04-09T13:28:21
+testingagain2,4,shading,11,0072.png,/Users/ashtonglover/Desktop/cpsy-stimuli-renderer/trial-runner/stimuli/shading/0072.png,0,bottom,2026-04-09T13:28:22
+testingagain2,5,incongruent,35,60.png,/Users/ashtonglover/Desktop/cpsy-stimuli-renderer/trial-runner/stimuli/incongruent/60.png,0,top,2026-04-09T13:28:23
+testingagain2,6,shading,3,0048.png,/Users/ashtonglover/Desktop/cpsy-stimuli-renderer/trial-runner/stimuli/shading/0048.png,0,bottom,2026-04-09T13:28:24
