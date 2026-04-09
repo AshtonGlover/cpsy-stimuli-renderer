@@ -21,6 +21,7 @@ ROTATED_IMAGE_SUFFIX = "_rot180"
 TRIAL_REPETITIONS = 20
 IMAGE_DISPLAY_MS = 850
 BATCH_COUNT = 4
+PRACTICE_TRIAL_COUNT = 5
 OUTPUT_FIELDNAMES = [
     "participant_id",
     "trial_number",
@@ -171,10 +172,13 @@ class TrialRunner:
         self.participant_id = ""
         self.participant_id_safe = ""
         self.current_index = 0
+        self.practice_index = 0
         self.current_photo: ImageTk.PhotoImage | None = None
         self.hide_image_after_id: str | None = None
         self.instructions_active = True
         self.awaiting_batch_resume = False
+        self.awaiting_practice_continue = False
+        self.practice_active = False
 
         if len(self.trials) % BATCH_COUNT != 0:
             raise ValueError(
@@ -182,6 +186,8 @@ class TrialRunner:
             )
         self.batch_count = BATCH_COUNT
         self.batch_size = len(self.trials) // self.batch_count
+        self.practice_trials = self.trials[: min(PRACTICE_TRIAL_COUNT, len(self.trials))]
+        self.practice_count = len(self.practice_trials)
 
         self.root.title("Top Dent Trial Runner")
         self.root.geometry(WINDOW_SIZE)
@@ -190,9 +196,11 @@ class TrialRunner:
         self.status_var = tk.StringVar()
         self.prompt_var = tk.StringVar(value="Which stimulus is convex? (1 = top, 2 = bottom)")
         self.break_message_var = tk.StringVar()
+        self.practice_message_var = tk.StringVar()
         self.participant_id_var = tk.StringVar()
         self.instructions_text = (
             "For each image, exactly one stimulus is convex and one is concave. If they both appear convex, select the one that bumps out more.\n\n"
+            f"You will first complete {self.practice_count} practice trials.\n\n"
             "After viewing each image, indicate which stimulus is convex.\n\n"
             "Press 1 if the TOP stimulus is convex.\n"
             "Press 2 if the BOTTOM stimulus is convex.\n\n"
@@ -270,6 +278,15 @@ class TrialRunner:
         )
         self.trial_controls = tk.Frame(self.screen_frame, bg=APP_BG)
         self.break_screen = tk.Frame(
+            self.screen_frame,
+            bg=CARD_BG,
+            highlightbackground=CARD_BORDER,
+            highlightthickness=1,
+            bd=0,
+            padx=40,
+            pady=36,
+        )
+        self.practice_complete_screen = tk.Frame(
             self.screen_frame,
             bg=CARD_BG,
             highlightbackground=CARD_BORDER,
@@ -406,6 +423,27 @@ class TrialRunner:
             **self._primary_button_style(),
         )
         self.continue_button.pack(side="left", padx=12)
+
+        self.practice_complete_label = tk.Label(
+            self.practice_complete_screen,
+            textvariable=self.practice_message_var,
+            font=("Helvetica", 15),
+            fg=TEXT_PRIMARY,
+            bg=CARD_BG,
+            justify="center",
+            wraplength=620,
+        )
+        self.practice_complete_label.pack(pady=(0, 28))
+
+        self.practice_continue_button = tk.Button(
+            self.practice_complete_screen,
+            text="Start Main Trials",
+            width=20,
+            font=("Helvetica", 13, "bold"),
+            command=self.start_main_trials,
+            **self._primary_button_style(),
+        )
+        self.practice_continue_button.pack()
 
         # self.convex_button = tk.Button(
         #     self.trial_controls,
@@ -575,6 +613,26 @@ class TrialRunner:
         self.image_label.configure(image=self.current_photo, text="")
         self.hide_image_after_id = self.root.after(IMAGE_DISPLAY_MS, self.hide_current_image)
 
+    def show_current_practice_trial(self) -> None:
+        if not self.practice_active:
+            return
+        if self.practice_index >= self.practice_count:
+            self.show_practice_complete_screen()
+            return
+
+        self._cancel_pending_image_hide()
+        trial = self.practice_trials[self.practice_index]
+        self.status_var.set(f"Practice {self.practice_index + 1} of {self.practice_count}")
+        self.prompt_var.set("Practice: Press 1 for top convex, 2 for bottom convex.")
+
+        image = Image.open(trial.image_path)
+        image = ImageOps.exif_transpose(image)
+
+        image.thumbnail(MAX_IMAGE_SIZE, Image.Resampling.LANCZOS)
+        self.current_photo = ImageTk.PhotoImage(image)
+        self.image_label.configure(image=self.current_photo, text="")
+        self.hide_image_after_id = self.root.after(IMAGE_DISPLAY_MS, self.hide_current_image)
+
     def _cancel_pending_image_hide(self) -> None:
         if self.hide_image_after_id is not None:
             self.root.after_cancel(self.hide_image_after_id)
@@ -586,11 +644,32 @@ class TrialRunner:
         self.image_label.configure(image="", text="")
 
     def _show_screen(self, screen: tk.Frame | None) -> None:
-        for frame in (self.id_screen, self.instructions_screen, self.trial_controls, self.break_screen):
+        for frame in (
+            self.id_screen,
+            self.instructions_screen,
+            self.trial_controls,
+            self.break_screen,
+            self.practice_complete_screen,
+        ):
             frame.pack_forget()
 
         if screen is not None:
             screen.pack()
+
+    def show_practice_complete_screen(self) -> None:
+        self._cancel_pending_image_hide()
+        self.awaiting_practice_continue = True
+        self.practice_active = False
+        self.status_var.set("Practice complete")
+        self.prompt_var.set("Press Start Main Trials when ready.")
+        self.current_photo = None
+        self.image_label.configure(image="", text="")
+        self.practice_message_var.set(
+            "Practice complete.\n\n"
+            "Your practice responses were not saved.\n\n"
+            "Press Start Main Trials when you are ready."
+        )
+        self._show_screen(self.practice_complete_screen)
 
     def show_break_screen(self) -> None:
         completed_batches = self.current_index // self.batch_size
@@ -632,6 +711,8 @@ class TrialRunner:
 
     def show_id_screen(self) -> None:
         self.awaiting_batch_resume = False
+        self.awaiting_practice_continue = False
+        self.practice_active = False
         self.status_var.set("Participant Setup")
         self.prompt_var.set("Enter a participant ID to continue.")
         self.image_label.configure(
@@ -669,12 +750,24 @@ class TrialRunner:
 
         self.instructions_active = False
         self.awaiting_batch_resume = False
+        self.awaiting_practice_continue = False
+        self.practice_index = 0
         self._show_screen(self.trial_controls)
-        # self.convex_button.configure(state="normal")
-        # self.concave_button.configure(state="normal")
-        self.prompt_var.set(
-            "Indicate which stimulus is convex. Press 1 for top, press 2 for bottom."
-        )
+        if self.practice_count > 0:
+            self.practice_active = True
+            self.show_current_practice_trial()
+            return
+
+        self.start_main_trials()
+
+    def start_main_trials(self) -> None:
+        self._cancel_pending_image_hide()
+        self.practice_active = False
+        self.awaiting_practice_continue = False
+        self.awaiting_batch_resume = False
+        self.current_index = 0
+        self._show_screen(self.trial_controls)
+        self.prompt_var.set("Indicate which stimulus is convex. Press 1 for top, press 2 for bottom.")
         self.show_current_trial()
 
     def handle_return_key(self, _event: tk.Event) -> None:
@@ -684,11 +777,19 @@ class TrialRunner:
         if self.instructions_active and self.instructions_screen.winfo_manager():
             self.start_trials()
             return
+        if self.awaiting_practice_continue:
+            self.start_main_trials()
+            return
         if self.awaiting_batch_resume:
             self.continue_after_break()
 
     def record_response(self, response: str) -> None:
-        if self.instructions_active or self.awaiting_batch_resume or self.current_index >= len(self.trials):
+        if self.instructions_active or self.awaiting_practice_continue or self.awaiting_batch_resume:
+            return
+        if self.practice_active:
+            self._record_practice_response()
+            return
+        if self.current_index >= len(self.trials):
             return
 
         trial = self.trials[self.current_index]
@@ -720,9 +821,22 @@ class TrialRunner:
             return
         self.show_current_trial()
 
+    def _record_practice_response(self) -> None:
+        if not self.practice_active:
+            return
+
+        self._cancel_pending_image_hide()
+        self.practice_index += 1
+        if self.practice_index >= self.practice_count:
+            self.show_practice_complete_screen()
+            return
+        self.show_current_practice_trial()
+
     def finish_experiment(self) -> None:
         self._cancel_pending_image_hide()
         self.awaiting_batch_resume = False
+        self.awaiting_practice_continue = False
+        self.practice_active = False
         self.image_label.configure(image="", text="")
         self.status_var.set("Experiment complete")
         saved_name = self.output_path.name if self.output_path is not None else "results file"
