@@ -35,11 +35,11 @@ OUTPUT_FIELDNAMES = [
 ]
 MAX_IMAGE_SIZE = (900, 700)
 WINDOW_SIZE = "1200x940"
-APP_BG = "#eef3f1"
-CARD_BG = "#ffffff"
-CARD_BORDER = "#d7e2dd"
-TEXT_PRIMARY = "#18322c"
-TEXT_MUTED = "#4f6a63"
+APP_BG = "#2e2e2e"
+CARD_BG = "#2e2e2e"
+CARD_BORDER = "#5c5c5c"
+TEXT_PRIMARY = "#ffffff"
+TEXT_MUTED = "#ffffff"
 PRIMARY_BUTTON_BG = "#3a3f45"
 PRIMARY_BUTTON_ACTIVE_BG = PRIMARY_BUTTON_BG
 CONVEX_BUTTON_BG = PRIMARY_BUTTON_BG
@@ -343,7 +343,7 @@ class TrialRunner:
             highlightcolor=PRIMARY_BUTTON_BG,
             relief="flat",
             bg="#f7faf9",
-            fg=TEXT_PRIMARY,
+            fg="black",
             insertbackground=TEXT_PRIMARY,
         )
         self.participant_entry.pack(fill="x", ipady=12)
@@ -485,7 +485,7 @@ class TrialRunner:
     def _primary_button_style(self) -> dict[str, object]:
         return {
             "bg": PRIMARY_BUTTON_BG,
-            "fg": "#ffffff",
+            "fg": "black",
             "activebackground": PRIMARY_BUTTON_ACTIVE_BG,
             "activeforeground": "#ffffff",
             "disabledforeground": "#ffffff",
